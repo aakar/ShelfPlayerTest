@@ -54,7 +54,7 @@ struct PlaybackQueue: View {
     }
     
     var body: some View {
-        if satellite.chapters.isEmpty && satellite.queue.isEmpty && satellite.upNextQueue.isEmpty {
+        if satellite.chapters.isEmpty && satellite.queue.isEmpty && satellite.upNextQueue.isEmpty && satellite.nowPlayingItem?.id.type != .episode {
             ContentUnavailableView("playback.queue.empty", systemImage: "list.number", description: Text("playback.queue.empty.description"))
         } else {
             ScrollViewReader { scrollProxy in
@@ -85,7 +85,18 @@ struct PlaybackQueue: View {
                         }
                     }
                     
-                    if !satellite.chapters.isEmpty {
+                    if let episode = satellite.nowPlayingItem as? Episode {
+                        Section {
+                            EpisodeDescription(episode: episode)
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .listRowInsets(EdgeInsets(top: 12, leading: 28, bottom: 12, trailing: 28))
+                                .id("playback_episode_description")
+                        } header: {
+                            Text("item.description")
+                                .listRowInsets(.init(top: 12, leading: 28, bottom: 12, trailing: 28))
+                        }
+                    } else if !satellite.chapters.isEmpty {
                         Section {
                             ForEach(satellite.chapters) {
                                 QueueChapterRow(chapter: $0)
@@ -150,6 +161,8 @@ struct PlaybackQueue: View {
                 )
                 .padding(.horizontal, -28)
                 .onAppear {
+                    scrollProxy.scrollTo("playback_episode_description")
+                    
                     guard let chapter = satellite.chapter else {
                         return
                     }

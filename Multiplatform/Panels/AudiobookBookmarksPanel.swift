@@ -20,16 +20,14 @@ struct AudiobookBookmarksPanel: View {
             } else {
                 List {
                     ForEach(Array(items), id: \.key) { (item, amount) in
-                        NavigationLink(value: NavigationDestination.item(item)) {
-                            HStack(spacing: 8) {
-                                ItemCompactRow(item: item, context: .bookmark)
-                                Text(amount, format: .number)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .contentShape(.rect)
+                        AudiobookList.Row(audiobook: item) {
+                            Text(amount, format: .number)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        .modifier(ItemStatusModifier(item: item, hoverEffect: nil))
                     }
+                    
+                    PanelItemCountLabel(total: items.count, type: .audiobook)
                     
                 }
                 .listStyle(.plain)
@@ -59,12 +57,12 @@ struct AudiobookBookmarksPanel: View {
                 return
             }
             
-            let possiblePrimaryIDs = try await PersistenceManager.shared.bookmark[library].sorted(by: <)
+            let possiblePrimaryIDs = try await PersistenceManager.shared.bookmark[library.id].sorted(by: <)
             
             for (primaryID, amount) in possiblePrimaryIDs {
-                let item = try? await ResolveCache.shared.resolve(primaryID: primaryID, groupingID: nil, connectionID: library.connectionID) as? Audiobook
+                let item = try? await ResolveCache.shared.resolve(primaryID: primaryID, groupingID: nil, connectionID: library.id.connectionID) as? Audiobook
                 
-                guard let item, item.id.libraryID == library.id else {
+                guard let item, item.id.libraryID == library.id.libraryID else {
                     continue
                 }
                 
@@ -84,3 +82,4 @@ struct AudiobookBookmarksPanel: View {
     .previewEnvironment()
 }
 #endif
+

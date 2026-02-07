@@ -16,12 +16,16 @@ extension View {
         @Namespace var namespace
         
         self
-            .environment(Satellite.shared.debugPlayback())
-            .environment(PlaybackViewModel.shared)
-            .environment(ConnectionStore.shared)
-            .environment(ProgressViewModel.shared)
-            .environment(ListenedTodayTracker.shared)
             .environment(OfflineMode.shared)
+            .environment(ConnectionStore.shared)
+            .environment(Satellite.shared.debugPlayback())
+        
+            .environment(PlaybackViewModel.shared)
+            .environment(ListenedTodayTracker.shared)
+        
+            .environment(ItemNavigationController())
+            .environment(TabRouterViewModel().previewEnvironment())
+        
             .environment(\.namespace, namespace)
     }
     #endif

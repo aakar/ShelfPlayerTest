@@ -156,6 +156,8 @@ public extension PersistenceManager.ProgressSubsystem {
     }
     
     func compareDatabase(against payload: [ProgressPayload], connectionID: ItemIdentifier.ConnectionID) async throws {
+        var remoteDuplicates = [String]()
+        
         let keyedPayload = payload.map {
             if let episodeID = $0.episodeId {
                 (key(primaryID: episodeID, groupingID: $0.libraryItemId, connectionID: connectionID), $0)
@@ -174,6 +176,7 @@ public extension PersistenceManager.ProgressSubsystem {
                 return $0
             }
             
+            remoteDuplicates.append(lhs > rhs ? $1.id : $0.id)
             return lhs > rhs ? $0 : $1
         }
         let remoteSet = Set(remote.keys)
@@ -192,10 +195,11 @@ public extension PersistenceManager.ProgressSubsystem {
         let remoteOnly = remoteSet.subtracting(localSet)
         let common = localSet.intersection(remoteSet)
         
+        logger.info("Comparing \(local.count) local progress entities against \(remote.count) remote progress payloads. Found \(localOnly.count) local-only, \(remoteOnly.count) remote-only, and \(common.count) common keys.")
+        
         try Task.checkCancellation()
         
         var pendingServerUpdate = [String: PersistedProgress]()
-        
         var pendingServerDeletion = [String]()
         
         var pendingLocalUpdate = [ProgressPayload]()
@@ -251,6 +255,10 @@ public extension PersistenceManager.ProgressSubsystem {
         
         try Task.checkCancellation()
         
+        // We should no longer cancel the task from the point onwards. The network requests are performed first.
+        
+        logger.info("Computed changes: \(pendingServerUpdate.count) remote updates, \(pendingServerDeletion.count) remote deletions, \(pendingLocalUpdate.count) local updates, \(pendingLocalDeletion.count) local deletions (\(remoteDuplicates.count) duplicates)")
+        
         // Run server updates
         
         if !pendingServerUpdate.isEmpty {
@@ -259,6 +267,13 @@ public extension PersistenceManager.ProgressSubsystem {
         
         for id in pendingServerDeletion {
             try await ABSClient[connectionID].delete(progressID: id)
+        }
+        for id in remoteDuplicates {
+            do {
+                try await ABSClient[connectionID].delete(progressID: id)
+            } catch {
+                logger.warning("Failed to delete remote duplicate \(id): \(error)")
+            }
         }
         
         // Apply database changes
@@ -319,6 +334,10 @@ public extension PersistenceManager.ProgressSubsystem {
             progressEntityDidUpdate(.init(persistedEntity: entity))
         }
         
+        guard await !OfflineMode.shared.isEnabled else {
+            return
+        }
+        
         do {
             let grouped = Dictionary(grouping: persisted) { $0.connectionID }
             
@@ -359,6 +378,10 @@ public extension PersistenceManager.ProgressSubsystem {
         
         for entity in persisted {
             progressEntityDidUpdate(.init(persistedEntity: entity))
+        }
+        
+        guard await !OfflineMode.shared.isEnabled else {
+            return
         }
         
         do {

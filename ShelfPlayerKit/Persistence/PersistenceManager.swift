@@ -29,6 +29,8 @@ public final class PersistenceManager: Sendable {
     public let listenNow: ListenNowSubsystem
     public let customization: CustomizationSubsystem
     
+    public let webSocket: WebSocketSubsystem
+    
     private init() {
         let schema = Schema(versionedSchema: SchemaV2.self)
         
@@ -61,6 +63,8 @@ public final class PersistenceManager: Sendable {
         
         listenNow = .init()
         customization = .init()
+        
+        webSocket = .init()
     }
     
     public func remove(itemID: ItemIdentifier) async {
@@ -91,8 +95,6 @@ public final class PersistenceManager: Sendable {
         await bookmark.remove(connectionID: connectionID)
         
         await ResolveCache.shared.flush()
-        
-        await RFNotification[.removeConnection].send(payload: connectionID)
     }
     
     public func refreshItem(itemID: ItemIdentifier) async throws {
@@ -104,6 +106,8 @@ public final class PersistenceManager: Sendable {
         try await keyValue.purgeCached()
         await listenNow.invalidate()
         await item.invalidate()
+        
+        try await keyValue.remove(cluster: "storedTabValues")
     }
 }
 

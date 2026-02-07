@@ -9,13 +9,14 @@ import SwiftUI
 import ShelfPlayback
 
 struct NavigationStackWrapper<Content: View>: View {
-    let tab: TabValue
+    @Environment(TabRouterViewModel.self) private var tabRouterViewModel
     
-    @ViewBuilder var content: () -> Content
+    let tab: TabValue
+    var content: () -> Content
     
     @State private var context: NavigationContext
     
-    init(tab: TabValue, content: @escaping () -> Content) {
+    init(tab: TabValue, @ViewBuilder content: @escaping () -> Content) {
         self.tab = tab
         self.content = content
         
@@ -39,31 +40,20 @@ struct NavigationStackWrapper<Content: View>: View {
                             PodcastEpisodesView()
                                 .environment(viewModel)
                         case .tabValue(let tabValue):
-                            tabValue.content
+                            TabRouter.panel(for: tabValue)
                             
                         case .audiobookRow(let title, let audiobooks):
                             RowGridView(title: title, audiobooks: audiobooks)
                     }
                 }
                 .onReceive(RFNotification[._navigate].publisher()) {
-                    let libraryID: String?
-                    
-                    if case .audiobookHome(let library) = tab {
-                        libraryID = library.id
-                    } else if case .podcastHome(let library) = tab {
-                        libraryID = library.id
-                    } else {
-                        libraryID = nil
-                    }
-                    
-                    guard let libraryID, $0.libraryID == libraryID else {
+                    guard tab.libraryID == .convertItemIdentifierToLibraryIdentifier($0), tabRouterViewModel.tabValue == tab else {
                         return
                     }
                     
                     context.path.append(.itemID($0))
                 }
         }
-        .environment(\.library, tab.library)
         .environment(\.navigationContext, context)
         .onReceive(RFNotification[.collectionDeleted].publisher()) { collectionID in
             context.path.removeAll {

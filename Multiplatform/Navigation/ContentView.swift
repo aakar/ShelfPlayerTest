@@ -13,7 +13,7 @@ import ShelfPlayback
 
 struct ContentView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.scenePhase) var scenePhase
+    @Environment(\.scenePhase) private var scenePhase
     
     @Namespace private var namespace
     
@@ -22,22 +22,20 @@ struct ContentView: View {
     
     @State private var satellite = Satellite.shared
     @State private var offlineMode = OfflineMode.shared
-    @State private var playbackViewModel = PlaybackViewModel.shared
     
     @State private var connectionStore = ConnectionStore.shared
-    @State private var progressViewModel = ProgressViewModel.shared
+    @State private var playbackViewModel = PlaybackViewModel.shared
     
-    @State private var listenedTodayTracker = ListenedTodayTracker.shared
+    @State private var itemNavigationController = ItemNavigationController()
     
     @ViewBuilder
     private func applyEnvironment<Content: View>(_ content: Content) -> some View {
         content
-            .environment(satellite)
             .environment(offlineMode)
-            .environment(playbackViewModel)
             .environment(connectionStore)
-            .environment(progressViewModel)
-            .environment(listenedTodayTracker)
+            .environment(satellite)
+            .environment(playbackViewModel)
+            .environment(itemNavigationController)
             .environment(\.namespace, namespace)
     }
     
@@ -70,6 +68,10 @@ struct ContentView: View {
                 CustomizeLibraryPanelSheet(library: library, scope: scope)
             case .whatsNew:
                 WhatsNewSheet()
+            #if DEBUG
+            case .debug:
+                DebugSheet()
+            #endif
         }
     }
     @ViewBuilder
@@ -106,9 +108,9 @@ struct ContentView: View {
     
     var body: some View {
         ZStack {
-            if !ConnectionStore.shared.didLoad {
+            if !connectionStore.didLoad {
                 LoadingView()
-            } else if ConnectionStore.shared.connections.isEmpty {
+            } else if connectionStore.connections.isEmpty {
                 WelcomeView()
             } else if offlineMode.isEnabled {
                 OfflineView()
@@ -154,11 +156,9 @@ struct ContentView: View {
             Task.detached { [scenePhase] in
                 switch scenePhase {
                     case .active:
-                        await RFNotification[.performBackgroundSessionSync].send(payload: nil)
-                        await ShelfPlayer.invalidateShortTermCache()
-                        
                         await RFNotification[.scenePhaseDidChange].send(payload: true)
                     case .inactive:
+                        await ShelfPlayer.invalidateShortTermCache()
                         await RFNotification[.scenePhaseDidChange].send(payload: false)
                     default:
                         break
@@ -184,9 +184,6 @@ struct ContentView: View {
                 try await Task.sleep(for: .seconds(0.6))
                 await ItemIdentifier(identifier).navigate()
             }
-        }
-        .onOpenURL {
-            print($0)
         }
     }
 }

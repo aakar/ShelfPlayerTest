@@ -57,6 +57,8 @@ struct AudiobookLibraryPanel: View {
             AudiobookList(sections: viewModel.lazyLoader.items) {
                 viewModel.lazyLoader.performLoadIfRequired($0)
             }
+            
+            PanelItemCountLabel(total: viewModel.lazyLoader.totalCount, type: .none, isLoading: viewModel.lazyLoader.isLoading)
         }
         .id(id)
     }
@@ -70,6 +72,8 @@ struct AudiobookLibraryPanel: View {
             }
             .id(id)
             .padding(.horizontal, 20)
+            
+            PanelItemCountLabel(total: viewModel.lazyLoader.totalCount, type: .none, isLoading: viewModel.lazyLoader.isLoading)
         }
     }
     
@@ -231,7 +235,7 @@ private final class LibraryViewModel {
     
     nonisolated func loadTabs() {
         Task {
-            let tabs = await PersistenceManager.shared.customization.configuredTabs(for: library, scope: .library)
+            let tabs = await PersistenceManager.shared.customization.configuredTabs(for: library.id, scope: .library)
             
             await MainActor.withAnimation {
                 self.tabs = tabs
@@ -260,7 +264,7 @@ extension LibraryViewModel {
             }
             
             do {
-                let genres = try await ABSClient[library.connectionID].genres(from: library.id)
+                let genres = try await ABSClient[library.id.connectionID].genres(from: library.id.libraryID)
                 
                 await MainActor.withAnimation {
                     self.genres = genres

@@ -50,7 +50,6 @@ struct ItemCompactRow: View {
                 parts.append(released)
             }
             
-            
             if audiobook.explicit && audiobook.abridged {
                 parts.append("🅴🅰")
             } else if audiobook.explicit {
@@ -58,6 +57,8 @@ struct ItemCompactRow: View {
             } else if audiobook.abridged {
                 parts.append("🅰")
             }
+            
+            parts.append(audiobook.duration.formatted(.duration(unitsStyle: .abbreviated, allowedUnits: [.minute, .hour])))
         } else if let episode = item as? Episode {
             if let releaseDate = episode.releaseDate {
                 parts.append(releaseDate.formatted(date: .abbreviated, time: .omitted))

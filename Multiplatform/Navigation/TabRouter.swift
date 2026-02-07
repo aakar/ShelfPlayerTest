@@ -5,7 +5,6 @@
 //  Created by Rasmus Krämer on 23.09.24.
 //
 
-import Foundation
 import SwiftUI
 import ShelfPlayback
 
@@ -14,175 +13,295 @@ struct TabRouter: View {
     
     @Environment(Satellite.self) private var satellite
     @Environment(ConnectionStore.self) private var connectionStore
-    @Environment(ProgressViewModel.self) private var progressViewModel
-    
-    @State private var navigateToWhenReady: ItemIdentifier? = nil
+    @Environment(ItemNavigationController.self) private var itemNavigationController
     
     @AppStorage("io.rfk.shelfPlayer.tabCustomization")
     private var customization: TabViewCustomization
+    @Default(.lastPlayedItemID) private var lastPlayedItemID
     
-    @Default(.customTabValues) private var customTabValues
-    @Default(.customTabsActive) private var customTabsActive
+    @State private var viewModel = TabRouterViewModel()
+    @State private var listenedTodayTracker = ListenedTodayTracker.shared
     
-    @State private var libraryCompactTabs = [Library: [TabValue]]()
-    
-    var selectionProxy: Binding<TabValue?> {
-        .init() { satellite.tabValue } set: {
-            satellite.tabValue = $0
-            
-            if $0 != nil {
-                Defaults[.lastTabValue] = $0
-            }
+    var isCompact: Bool {
+        horizontalSizeClass == .compact
+    }
+    var isCompactAndReady: Bool {
+        if isCompact {
+            viewModel.tabValue != nil
+        } else {
+            false
         }
     }
-    var isSynchronized: Bool {
-        guard let selection = satellite.tabValue else {
+    var isNowPlayingBarVisible: Bool {
+        guard let selectedLibraryID = viewModel.selectedLibraryID else {
             return false
         }
         
-        return progressViewModel.importedConnectionIDs.contains(selection.library.connectionID)
-    }
-    
-    private var isCompact: Bool {
-        horizontalSizeClass == .compact
-    }
-    private var searchTab: TabValue? {
-        guard let library = satellite.tabValue?.library else {
-            return nil
+        guard viewModel.currentConnectionStatus[selectedLibraryID.connectionID] == true else {
+            return false
         }
         
-        return .search(library)
+        return satellite.nowPlayingItemID != nil || lastPlayedItemID != nil
+    }
+    
+    var connections: [FriendlyConnection] {
+        connectionStore.connections
+    }
+    var offlineConnections: [ItemIdentifier.ConnectionID] {
+        connectionStore.offlineConnections
+    }
+    func isOffline(_ id: ItemIdentifier.ConnectionID) -> Bool {
+        offlineConnections.contains(id)
+    }
+    
+    var isAtLeastOneConnectionSynchronized: Bool {
+        viewModel.currentConnectionStatus.values.contains(true)
     }
     
     @ViewBuilder
-    private func content(for tab: TabValue) -> some View {
-        if case .custom(let wrapped) = tab {
-            AnyView(erasing: content(for: wrapped))
-        } else {
-            NavigationStackWrapper(tab: tab) {
-                tab.content
-            }
-            .modifier(PlaybackTabContentModifier())
+    private func loadingView(startOfflineTimeout: Bool) -> some View {
+        LoadingView()
+            .toolbarVisibility(isCompact ? .hidden : .automatic, for: .tabBar)
+            .modifier(OfflineControlsModifier(startOfflineTimeout: startOfflineTimeout))
+    }
+    private func loadingTab(task: (() async -> Void)? = nil) -> some TabContent<TabValue?> {
+        Tab("loading", systemImage: "teddybear.fill", value: .loading) {
+            loadingView(startOfflineTimeout: true)
+                .task {
+                    await task?()
+                }
         }
     }
+    @ViewBuilder
+    private func errorView(startOfflineTimeout: Bool) -> some View {
+        ErrorView()
+            .toolbarVisibility(isCompact ? .hidden : .automatic, for: .tabBar)
+            .modifier(OfflineControlsModifier(startOfflineTimeout: startOfflineTimeout))
+    }
     
     @ViewBuilder
-    private func applyChangeEvents(_ content: () -> some View) -> some View {
-        content()
-            .onChange(of: satellite.tabValue?.library, initial: true) {
-                let appearance = UINavigationBarAppearance()
+    static func panel(for tab: TabValue) -> some View {
+        switch tab {
+            case .audiobookHome:
+                AudiobookHomePanel()
+            case .audiobookSeries:
+                AudiobookSeriesPanel()
+            case .audiobookAuthors:
+                AudiobookAuthorsPanel()
+            case .audiobookNarrators:
+                AudiobookNarratorsPanel()
+            case .audiobookBookmarks:
+                AudiobookBookmarksPanel()
+            case .audiobookCollections:
+                CollectionsPanel(type: .collection)
+            case .podcastLibrary:
+                PodcastLibraryPanel()
                 
-                if satellite.tabValue?.library.type == .audiobooks && Defaults[.enableSerifFont] {
-                    appearance.titleTextAttributes = [.font: UIFont(descriptor: UIFont.systemFont(ofSize: 17, weight: .bold).fontDescriptor.withDesign(.serif)!, size: 0)]
-                    appearance.largeTitleTextAttributes = [.font: UIFont(descriptor: UIFont.systemFont(ofSize: 34, weight: .bold).fontDescriptor.withDesign(.serif)!, size: 0)]
-                }
+            case .podcastHome:
+                PodcastHomePanel()
+            case .podcastLatest:
+                PodcastLatestPanel()
+            case .audiobookLibrary:
+                AudiobookLibraryPanel()
                 
-                appearance.configureWithTransparentBackground()
-                UINavigationBar.appearance().standardAppearance = appearance
+            case .collection(let collection, _):
+                CollectionView(collection)
+            case .playlists:
+                CollectionsPanel(type: .playlist)
                 
-                appearance.configureWithDefaultBackground()
-                UINavigationBar.appearance().compactAppearance = appearance
-            }
-            .onChange(of: satellite.tabValue) {
-                navigateIfRequired(withDelay: true)
-            }
-            .onChange(of: satellite.tabValue?.library.connectionID) {
-                RFNotification[.performBackgroundSessionSync].send(payload: satellite.tabValue?.library.connectionID)
-            }
-            .onChange(of: connectionStore.libraries, initial: true) {
-                populateCompactLibraryTabs()
-            }
-            .onChange(of: customTabValues) {
-                if customTabValues.isEmpty {
-                    customTabsActive = false
-                }
-            }
+            case .downloaded:
+                DownloadedPanel()
+                
+            case .custom(let tabValue, _):
+                AnyView(erasing: panel(for: tabValue))
+                
+            default:
+                fatalError()
+        }
     }
-    @ViewBuilder
-    private func applyReceiveEvents(_ content: () -> some View) -> some View {
-        content()
-            .onReceive(RFNotification[.changeLibrary].publisher()) {
-                select($0)
-            }
-            .onReceive(RFNotification[.setGlobalSearch].publisher()) { payload in
-                guard let library = satellite.tabValue?.library, satellite.tabValue != searchTab else {
-                    return
+    private func tab(for tab: TabValue) -> some TabContent<TabValue?> {
+        Tab(tab.label, systemImage: tab.image, value: tab) {
+            if let libraryID = tab.libraryID, let library = viewModel.libraryLookup[libraryID] {
+                if let isSynchronized = viewModel.currentConnectionStatus[libraryID.connectionID] {
+                    if isSynchronized {
+                        NavigationStackWrapper(tab: tab) {
+                            Self.panel(for: tab)
+                        }
+                        .environment(\.library, library)
+                        .modifier(PlaybackTabContentModifier())
+                    } else {
+                        errorView(startOfflineTimeout: true)
+                    }
+                } else {
+                    loadingView(startOfflineTimeout: true)
+                        .task {
+                            viewModel.synchronize(connectionID: libraryID.connectionID)
+                        }
                 }
-                
-                satellite.tabValue = .search(library)
-                
-                Task {
-                    try await Task.sleep(for: .seconds(0.6))
-                    RFNotification[.setGlobalSearch].dispatch(payload: payload)
-                }
-            }
-            .onReceive(RFNotification[.navigate].publisher()) {
-                navigateToWhenReady = $0
-                navigateIfRequired(withDelay: false)
-            }
-            .onReceive(RFNotification[.navigateConditionMet].publisher()) {
-                navigateIfRequired(withDelay: true)
-            }
-            .onReceive(RFNotification[.invalidateTabs].publisher()) {
-                libraryCompactTabs.removeAll()
-                populateCompactLibraryTabs()
-            }
-            .onReceive(RFNotification[.toggleCustomTabsActive].publisher()) {
-                guard !customTabValues.isEmpty else {
-                    customTabsActive = false
-                    satellite.present(.customTabValuePreferences)
-                    return
-                }
-                
-                customTabsActive.toggle()
-                satellite.tabValue = customTabValues.first
-            }
-            .onReceive(RFNotification[.invalidateTab].publisher()) {
-                customTabsActive = false
-                satellite.tabValue = nil
-                
-                selectFirstLibrary()
-            }
-    }
-    @ViewBuilder
-    private func applyEvents(_ content: () -> some View) -> some View {
-        applyChangeEvents {
-            applyReceiveEvents {
-                content()
+            } else {
+                errorView(startOfflineTimeout: false)
             }
         }
     }
     
     var body: some View {
+        TabView(selection: $viewModel.tabValue) {
+            if viewModel.connectionLibraries.isEmpty {
+                loadingTab {
+                    await viewModel.loadLibraries()
+                }
+            } else if !isCompactAndReady {
+                loadingTab() {
+                    viewModel.selectLastOrFirstCompactLibrary()
+                }
+            } else {
+                // Compact
+                if let selectedLibraryID = viewModel.selectedLibraryID, let tabBar = viewModel.tabBar[selectedLibraryID] {
+                    ForEach(tabBar) {
+                        tab(for: $0)
+                    }
+                    .hidden(!isCompactAndReady || viewModel.pinnedTabsActive)
+                }
+                
+                // Pinned
+                ForEach(viewModel.pinnedTabValues) {
+                    tab(for: $0)
+                }
+                .hidden(isCompact ? !viewModel.pinnedTabsActive && isCompactAndReady : false)
+                                
+                // Search
+                Tab(value: .search, role: .search) {
+                    NavigationStack {
+                        SearchPanel()
+                    }
+                }
+                .hidden(!isCompactAndReady)
+            }
+            
+//            ForEach(connections) { connection in
+//                TabSection {
+//                    if isOffline(connection.id) {
+//                        Tab(value: .loading) {
+//                            Text(":(")
+//                        }
+//                    } else {
+//                        Tab(value: .loading) {
+//                            Text(":)")
+//                        }
+//                    }
+//                } header: {
+//                    Text(connection.name)
+//                }
+//            }
+//            .hidden(isCompact)
+        }
+        .tabViewStyle(.sidebarAdaptable)
+        .tabViewCustomization($customization)
+        .modify {
+            if #available(iOS 26, *) {
+                $0
+                    .tabBarMinimizeBehavior(.onScrollDown)
+            } else {
+                $0
+            }
+        }
+        .modify {
+            if isCompact, #available(iOS 26.1, *) {
+                $0
+                    .tabViewBottomAccessory(isEnabled: isNowPlayingBarVisible) {
+                        if satellite.nowPlayingItemID != nil {
+                            PlaybackBottomBarPill()
+                        } else if let lastPlayedItemID {
+                            PlaybackPlaceholderBottomPill(itemID: lastPlayedItemID)
+                        }
+                    }
+            } else {
+                $0
+                    .modifier(ApplyLegacyCollapsedForeground(isEnabled: isNowPlayingBarVisible))
+            }
+        }
+        .modifier(CompactPlaybackModifier())
+        .modifier(RegularPlaybackModifier())
+        .environment(viewModel)
+        .environment(\.optionalTabRouter, viewModel)
+        .environment(listenedTodayTracker)
+        .environment(\.playbackBottomOffset, 52)
+        .onChange(of: itemNavigationController.itemID, initial: true) {
+            guard let itemID: ItemIdentifier = itemNavigationController.consume() else {
+                return
+            }
+            
+            let targetLibraryID = LibraryIdentifier.convertItemIdentifierToLibraryIdentifier(itemID)
+            if viewModel.tabValue?.libraryID != targetLibraryID {
+                viewModel.selectFirstCompactTab(for: targetLibraryID, allowPinned: true)
+            }
+            
+            viewModel.navigateToWhenReady = itemID
+            navigateToWaitingItemID()
+        }
+        .onChange(of: viewModel.tabValue) {
+            navigateToWaitingItemID()
+        }
+        .onChange(of: viewModel.currentConnectionStatus) {
+            navigateToWaitingItemID()
+        }
+        .onChange(of: itemNavigationController.search?.0, initial: true) {
+            navigateToWaitingSearch()
+        }
+        .onChange(of: viewModel.selectedLibraryID) {
+           navigateToWaitingSearch()
+        }
+        .onChange(of: isAtLeastOneConnectionSynchronized, initial: true) {
+            guard isAtLeastOneConnectionSynchronized else {
+                return
+            }
+            
+            ShelfPlayer.initOnlineUIHook()
+        }
+    }
+    
+    func navigateToWaitingItemID() {
+        guard let libraryID = viewModel.tabValue?.libraryID, let navigateToWhenReady = viewModel.navigateToWhenReady else {
+            return
+        }
+        
+        guard viewModel.currentConnectionStatus[navigateToWhenReady.connectionID] == true else {
+            return
+        }
+        
+        guard libraryID == .convertItemIdentifierToLibraryIdentifier(navigateToWhenReady) else {
+            return
+        }
+        
+        viewModel.navigateToWhenReady = nil
+        RFNotification[._navigate].send(payload: navigateToWhenReady)
+    }
+    func navigateToWaitingSearch() {
+        guard viewModel.selectedLibraryID != nil, itemNavigationController.search != nil else {
+            return
+        }
+        
+        viewModel.tabValue = .search
+    }
+}
+
+struct OptionalTabRouterEnvironmentKey: EnvironmentKey {
+    public static let defaultValue: TabRouterViewModel? = nil
+}
+
+extension EnvironmentValues {
+    var optionalTabRouter: TabRouterViewModel? {
+        get { self[OptionalTabRouterEnvironmentKey.self] }
+        set { self[OptionalTabRouterEnvironmentKey.self] = newValue }
+    }
+}
+
+/*
+
+    var body: some View {
         applyEvents {
             ZStack {
-                if isCompact, !isSynchronized, let tabValue = satellite.tabValue {
-                    SyncGate(library: tabValue.library)
-                } else if let tabValue = satellite.tabValue {
-                    if isCompact, libraryCompactTabs[tabValue.library] == nil {
-                        LoadingView()
-                            .modifier(OfflineControlsModifier(startOfflineTimeout: true))
-                            .task {
-                                libraryCompactTabs[tabValue.library] = await PersistenceManager.shared.customization.configuredTabs(for: tabValue.library, scope: .tabBar)
-                            }
-                    } else {
-                        TabView(selection: selectionProxy) {
-                            if isCompact {
-                                if customTabsActive && !customTabValues.isEmpty {
-                                    ForEach(customTabValues) { tabValue in
-                                        Tab(tabValue.library.name, systemImage: tabValue.image, value: tabValue) {
-                                            content(for: tabValue)
-                                        }
-                                    }
-                                } else if let libraryCompactTabs = libraryCompactTabs[tabValue.library] {
-                                    ForEach(libraryCompactTabs) { tabValue in
-                                        Tab(tabValue.label, systemImage: tabValue.image, value: tabValue) {
-                                            content(for: tabValue)
-                                        }
-                                    }
-                                }
-                            }
-                            
+                
                             ForEach(connectionStore.connections) { connection in
                                 if let libraries = connectionStore.libraries[connection.id] {
                                     ForEach(libraries) { library in
@@ -204,14 +323,7 @@ struct TabRouter: View {
                                 }
                             }
                             
-                            if let searchTab {
-                                Tab(value: searchTab, role: .search) {
-                                    content(for: searchTab)
-                                        .modifier(SearchPanelModifier())
-                                }
-                            }
                         }
-                        .tabViewStyle(.sidebarAdaptable)
                         .tabViewSidebarFooter {
                             Divider()
                                 .padding(.bottom, 12)
@@ -231,7 +343,6 @@ struct TabRouter: View {
                             .labelStyle(.iconOnly)
                             .foregroundStyle(.primary)
                         }
-                        .tabViewCustomization($customization)
                         .tabViewSidebarHeader {
                             Button {
                                 satellite.present(.listenNow)
@@ -240,140 +351,13 @@ struct TabRouter: View {
                             }
                             .buttonStyle(.plain)
                         }
-                        .modify {
-                            if isCompact, #available(iOS 26, *) {
-                                $0
-                                    .tabBarMinimizeBehavior(.onScrollDown)
-                                    .tabViewBottomAccessory {
-                                        if satellite.nowPlayingItemID != nil {
-                                            PlaybackBottomBarPill()
-                                        } else {
-                                            PlaybackPlaceholderBottomPill()
-                                        }
-                                    }
-                            } else {
-                                $0
-                                    .modifier(ApplyLegacyCollapsedForeground())
-                            }
-                        }
-                        .modifier(CompactPlaybackModifier())
-                        .modifier(RegularPlaybackModifier())
-                        .onAppear {
-                            navigateIfRequired(withDelay: true)
-                        }
-                        .onAppear {
-                            ShelfPlayer.initOnlineUIHook()
-                        }
                     }
-                } else {
-                    LoadingView()
-                        .modifier(OfflineControlsModifier(startOfflineTimeout: false))
-                        .onChange(of: connectionStore.libraries, initial: true) {
-                            if let lastSelection = Defaults[.lastTabValue] {
-                                satellite.tabValue = lastSelection
-                                return
-                            }
-                            
-                            selectFirstLibrary()
-                        }
-                }
-            }
-            .environment(\.playbackBottomOffset, 52)
-            .sensoryFeedback(.error, trigger: progressViewModel.importFailedConnectionIDs)
-        }
-    }
-    
-    private func select(_ library: Library) {
-        switch library.type {
-        case .audiobooks:
-            satellite.tabValue = .audiobookHome(library)
-        case .podcasts:
-            satellite.tabValue = .podcastHome(library)
-        }
-    }
-    private func navigateIfRequired(withDelay: Bool) {
-        guard let navigateToWhenReady else {
-            return
-        }
-        
-        guard !OfflineMode.shared.isEnabled else {
-            self.navigateToWhenReady = nil
-            return
-        }
-        
-        guard let library = connectionStore.libraries[navigateToWhenReady.connectionID]?.first(where: { $0.id == navigateToWhenReady.libraryID }) else {
-            return
-        }
-        
-        switch library.type {
-        case .audiobooks:
-            guard navigateToLibrary(.audiobookHome(library)) else {
-                return
-            }
-        case .podcasts:
-            guard navigateToLibrary(.podcastHome(library)) else {
-                return
-            }
-        }
-        
-        guard progressViewModel.importedConnectionIDs.contains(library.connectionID) else {
-            if progressViewModel.importFailedConnectionIDs.contains(library.id) {
-                self.navigateToWhenReady = nil
-            }
-            
-            return
-        }
-        
-        Task { [navigateToWhenReady] in
-            if withDelay {
-                try await Task.sleep(for: .seconds(0.5))
-            }
-            
-            await RFNotification[._navigate].send(payload: navigateToWhenReady)
-        }
-        
-        self.navigateToWhenReady = nil
-    }
-    private func navigateToLibrary(_ tab: TabValue) -> Bool {
-        let customTab: TabValue = .custom(tab)
-        
-        if satellite.tabValue == tab || satellite.tabValue == customTab {
-            return true
-        }
-        
-        if customTabValues.contains(customTab) {
-            satellite.tabValue = customTab
-        } else {
-            customTabsActive = false
-            satellite.tabValue = tab
-        }
-        
-        return false
-    }
-    
-    private func selectFirstLibrary() {
-        guard let library = connectionStore.libraries.first?.value.first else {
-            return
-        }
-        
-        switch library.type {
-            case .audiobooks:
-                satellite.tabValue = .audiobookHome(library)
-            case .podcasts:
-                satellite.tabValue = .podcastHome(library)
-        }
-    }
-    
-    private func populateCompactLibraryTabs() {
-        Task {
-            for library in connectionStore.libraries.values.flatMap({ $0 }) {
-                if libraryCompactTabs[library] == nil {
-                    libraryCompactTabs[library] = await PersistenceManager.shared.customization.configuredTabs(for: library, scope: .tabBar)
                 }
             }
         }
     }
 }
+ */
 
 #if DEBUG
 #Preview {
@@ -382,39 +366,3 @@ struct TabRouter: View {
 }
 #endif
 
-#Preview {
-    TabView {
-        Tab("VERY LONG TITLE VERY LONG TITLE", systemImage: "house") {
-            Text("ABC")
-        }
-        
-        Tab("VERY LONG TITLE VERY LONG TITLE", systemImage: "bell") {
-            
-        }
-        
-        Tab("VERY LONG TITLE VERY LONG TITLE", systemImage: "list.bullet") {
-            
-        }
-        
-        Tab("""
-            VERY LONG TITLE
-            VERY LONG TITLE
-            """, systemImage: "command") {
-            
-        }
-    }
-    .tabViewStyle(.sidebarAdaptable)
-    .modify {
-        if #available(iOS 26, *) {
-            $0
-                .tabViewBottomAccessory {
-                    if false {
-                        Text("abc")
-                    }
-                }
-        } else {
-            $0
-        }
-    }
-    .font(.largeTitle)
-}

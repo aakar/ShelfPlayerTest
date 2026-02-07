@@ -16,8 +16,6 @@ final class Satellite {
     
     // MARK: Navigation
     
-    var tabValue: TabValue?
-    
     private(set) var sheetStack = [Sheet]()
     var warningAlertStack = [WarningAlert]()
     
@@ -90,9 +88,15 @@ final class Satellite {
             }
         }
         
-        RFNotification[.presentSheet].subscribe { [weak self] in
-            self?.present($0)
+        RFNotification[.connectionUnauthorized].subscribe { [weak self] in
+            self?.present(.reauthorizeConnection($0))
         }
+        
+        #if DEBUG
+        RFNotification[.shake].subscribe { [weak self] _ in
+            self?.present(.debug)
+        }
+        #endif
         
         setupObservers()
         
@@ -167,6 +171,10 @@ extension Satellite {
         
         case whatsNew
         
+        #if DEBUG
+        case debug
+        #endif
+        
         var id: String {
             switch self {
                 case .listenNow:
@@ -191,10 +199,15 @@ extension Satellite {
                     "reauthorizeConnection-\(connectionID)"
                     
                 case .customizeLibrary(let library, let scope):
-                    "customizeLibrary-\(library.connectionID)-\(library.id)-\(scope.id)"
+                    "customizeLibrary-\(library.id)-\(scope.id)"
                     
                 case .whatsNew:
                     "whatsNew"
+                    
+                #if DEBUG
+                case .debug:
+                    "debug"
+                #endif
             }
         }
     }

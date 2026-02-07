@@ -14,8 +14,50 @@ extension PersistenceManager {
     }
 }
 
+extension PersistenceManager.CustomizationSubsystem {
+    func defaultTabs(for library: LibraryIdentifier, scope: TabValueCustomizationScope) -> [TabValue] {
+        switch library.type {
+            case .audiobooks:
+                switch scope {
+                    case .tabBar:
+                        [
+                            .audiobookHome(library),
+                            .audiobookLibrary(library),
+                        ]
+                    case .library:
+                        [
+                            .audiobookSeries(library),
+                            .audiobookAuthors(library),
+                            .audiobookNarrators(library),
+                            .audiobookBookmarks(library),
+                            .audiobookCollections(library),
+                            .playlists(library),
+                            .downloaded(library),
+                        ]
+                    case .sidebar:
+                        availableTabs(for: library, scope: scope)
+                }
+            case .podcasts:
+                switch scope {
+                    case .tabBar, .sidebar:
+                        [
+                            .podcastHome(library),
+                            .podcastLatest(library),
+                            .podcastLibrary(library),
+                        ]
+                    case .library:
+                        [
+                            .podcastLatest(library),
+                            .playlists(library),
+                            .downloaded(library),
+                        ]
+                }
+        }
+    }
+}
+
 public extension PersistenceManager.CustomizationSubsystem {
-    func availableTabs(for library: Library, scope: TabValueCustomizationScope) -> [TabValue] {
+    func availableTabs(for library: LibraryIdentifier, scope: TabValueCustomizationScope) -> [TabValue] {
         switch library.type {
             case .audiobooks:
                 switch scope {
@@ -28,6 +70,7 @@ public extension PersistenceManager.CustomizationSubsystem {
                             .audiobookBookmarks(library),
                             .audiobookCollections(library),
                             .playlists(library),
+                            .downloaded(library),
                             .audiobookLibrary(library),
                         ]
                         
@@ -40,6 +83,7 @@ public extension PersistenceManager.CustomizationSubsystem {
                             .audiobookBookmarks(library),
                             .audiobookCollections(library),
                             .playlists(library),
+                            .downloaded(library),
                             .audiobookLibrary(library),
                         ]
                         
@@ -47,51 +91,30 @@ public extension PersistenceManager.CustomizationSubsystem {
                         defaultTabs(for: library, scope: .library)
                 }
             case .podcasts:
-                [
-                    .podcastHome(library),
-                    .podcastLatest(library),
-                    .playlists(library),
-                    .podcastLibrary(library),
-                ]
-        }
-    }
-    
-    func defaultTabs(for library: Library, scope: TabValueCustomizationScope) -> [TabValue] {
-        switch library.type {
-            case .audiobooks:
                 switch scope {
-                    case .tabBar:
+                    case .tabBar, .sidebar:
                         [
-                            .audiobookHome(library),
-                            .audiobookLibrary(library),
+                            .podcastHome(library),
+                            .podcastLatest(library),
+                            .playlists(library),
+                            .downloaded(library),
+                            .podcastLibrary(library),
                         ]
                     case .library:
                         [
-                            .audiobookSeries(library),
-                            .audiobookAuthors(library),
-                            .audiobookNarrators(library),
-                            .audiobookBookmarks(library),
-                            .audiobookCollections(library),
+                            .podcastLatest(library),
                             .playlists(library),
+                            .downloaded(library),
                         ]
-                    case .sidebar:
-                        fatalError()
                 }
-            case .podcasts:
-                [
-                    .podcastHome(library),
-                    .podcastLatest(library),
-                    .playlists(library),
-                    .podcastLibrary(library),
-                ]
         }
     }
     
-    func configuredTabs(for library: Library, scope: TabValueCustomizationScope) async -> [TabValue] {
-        await PersistenceManager.shared.keyValue[.storedTabValues(for: library, scope: scope)] ?? defaultTabs(for: library, scope: scope)
+    func configuredTabs(for libraryID: LibraryIdentifier, scope: TabValueCustomizationScope) async -> [TabValue] {
+        await PersistenceManager.shared.keyValue[.storedTabIDs(for: libraryID, scope: scope)] ?? defaultTabs(for: libraryID, scope: scope)
     }
-    func setConfiguredTabs(_ tabs: [TabValue]?, for library: Library, scope: TabValueCustomizationScope) async throws {
-        try await PersistenceManager.shared.keyValue.set(.storedTabValues(for: library, scope: scope), tabs)
+    func setConfiguredTabs(_ tabs: [TabValue]?, for libraryID: LibraryIdentifier, scope: TabValueCustomizationScope) async throws {
+        try await PersistenceManager.shared.keyValue.set(.storedTabIDs(for: libraryID, scope: scope), tabs)
         await RFNotification[.invalidateTabs].send()
     }
     
@@ -105,7 +128,7 @@ public extension PersistenceManager.CustomizationSubsystem {
             rawValue
         }
         
-        public static func available(for libraryType: Library.MediaType) -> [Self] {
+        public static func available(for libraryType: LibraryMediaType) -> [Self] {
             switch libraryType {
                 case .audiobooks:
                     [.tabBar, .library]
@@ -117,7 +140,7 @@ public extension PersistenceManager.CustomizationSubsystem {
 }
 
 private extension PersistenceManager.KeyValueSubsystem.Key {
-    static func storedTabValues(for library: Library, scope: PersistenceManager.CustomizationSubsystem.TabValueCustomizationScope) -> Key<[TabValue]> {
-        Key(identifier: "storedTabValues_\(library.connectionID)_\(library.id)_\(scope.id)", cluster: "storedTabValues", isCachePurgeable: false)
+    static func storedTabIDs(for libraryID: LibraryIdentifier, scope: PersistenceManager.CustomizationSubsystem.TabValueCustomizationScope) -> Key<[TabValue]> {
+        Key(identifier: "storedTabIDs_\(libraryID)_\(scope)", cluster: "storedTabIDs", isCachePurgeable: false)
     }
 }

@@ -72,7 +72,7 @@ struct AudiobookHomePanel: View {
                 ListenNowSheetToggle.toolbarItem()
                 
                 ToolbarItem(placement: .topBarTrailing) {
-                    LibraryPickerMenu(customizeLibrary: true)
+                    CompactLibraryPicker(customizeLibrary: true)
                 }
             }
         }
@@ -83,11 +83,11 @@ struct AudiobookHomePanel: View {
             fetchItems(refresh: true)
             ListenedTodayTracker.shared.refresh()
         }
-        .onReceive(RFNotification[.progressEntityUpdated].publisher()) { _ in
+        .onReceive(RFNotification[.playbackReported].publisher()) { _ in
             fetchItems()
         }
         .onReceive(RFNotification[.downloadStatusChanged].publisher()) {
-            if let (itemID, _) = $0, itemID.libraryID != library?.id {
+            if let (itemID, _) = $0, itemID.libraryID != library?.id.libraryID {
                 return
             }
             
@@ -122,7 +122,7 @@ private extension AudiobookHomePanel {
         }
         
         do {
-            let audiobooks = try await PersistenceManager.shared.download.audiobooks(in: library.id)
+            let audiobooks = try await PersistenceManager.shared.download.audiobooks(in: library.id.libraryID)
             
             await MainActor.withAnimation {
                 downloaded = audiobooks
@@ -141,8 +141,8 @@ private extension AudiobookHomePanel {
         let discoverRow = refresh ? nil : await audiobooks.first { $0.id == "discover" }
         
         do {
-            let home: ([HomeRow<Audiobook>], [HomeRow<Person>]) = try await ABSClient[library.connectionID].home(for: library.id)
-            let audiobooks = await HomeRow.prepareForPresentation(home.0, connectionID: library.connectionID).map {
+            let home: ([HomeRow<Audiobook>], [HomeRow<Person>]) = try await ABSClient[library.id.connectionID].home(for: library.id.libraryID)
+            let audiobooks = await HomeRow.prepareForPresentation(home.0, connectionID: library.id.connectionID).map {
                 if $0.id == "discover", let discoverRow {
                     discoverRow
                 } else {

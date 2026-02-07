@@ -11,12 +11,14 @@ import ShelfPlayback
 
 struct SearchPanel: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(\.library) private var library
     
-    @Environment(SearchViewModel.self) private var viewModel
+    @Environment(TabRouterViewModel.self) private var tabRouterViewModel
+    @Environment(ItemNavigationController.self) private var itemNavigationController
+    
+    @State private var viewModel = SearchViewModel()
     
     var body: some View {
-        Group {
+        ZStack {
             if let result = viewModel.result {
                 List {
                     ForEach(result) { item in
@@ -38,14 +40,32 @@ struct SearchPanel: View {
         }
         .navigationTitle("panel.search")
         .largeTitleDisplayMode()
+        .searchable(text: $viewModel.search, placement: .navigationBarDrawer)
+        .searchScopes($viewModel.scope, activation: horizontalSizeClass == .compact ? .onSearchPresentation : .onTextEntry) {
+            if let library = viewModel.library {
+                Text(verbatim: "\"\(library.name)\"")
+                    .tag(SearchViewModel.SearchScope.library)
+            }
+            
+            Text("panel.search.global")
+                .tag(SearchViewModel.SearchScope.global)
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                LibraryPickerMenu()
+                CompactLibraryPicker()
             }
         }
         .modifier(PlaybackSafeAreaPaddingModifier())
-        .onChange(of: library, initial: true) {
-            viewModel.library = library
+        .onChange(of: tabRouterViewModel.library, initial: true) {
+            viewModel.library = tabRouterViewModel.library
+        }
+        .onChange(of: itemNavigationController.search?.0, initial: true) {
+            guard let (search, scope) = itemNavigationController.consume() else {
+                return
+            }
+            
+            viewModel.search = search
+            viewModel.scope = scope
         }
         .onReceive(RFNotification[.setGlobalSearch].publisher()) { search, scope in
             viewModel.scope = scope
@@ -56,28 +76,6 @@ struct SearchPanel: View {
             }
         }
         .sensoryFeedback(.error, trigger: viewModel.notifyError)
-    }
-}
-
-struct SearchPanelModifier: ViewModifier {
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Environment(Satellite.self) private var satellite
-    
-    @State private var viewModel = SearchViewModel()
-    
-    func body(content: Content) -> some View {
-        content
-            .searchable(text: $viewModel.search, placement: .navigationBarDrawer)
-            .searchScopes($viewModel.scope, activation: horizontalSizeClass == .compact ? .onSearchPresentation : .onTextEntry) {
-                if let tabValue = satellite.tabValue {
-                    Text(verbatim: "\"\(tabValue.library.name)\"")
-                        .tag(SearchViewModel.SearchScope.library)
-                }
-                
-                Text("panel.search.global")
-                    .tag(SearchViewModel.SearchScope.global)
-            }
-            .environment(viewModel)
     }
 }
 
@@ -96,9 +94,8 @@ final class SearchViewModel {
         }
     }
     
-    var library: Library! {
+    var library: Library? {
         didSet {
-            search = ""
             performSearch()
         }
     }
@@ -159,18 +156,18 @@ final class SearchViewModel {
             
             do {
                 switch scope {
-                    case .library:
-                        guard let library = await self.library else {
-                            throw APIClientError.notFound
-                        }
-                        
-                        let grouped = try await ABSClient[library.connectionID].items(in: library, search: search)
-                        let part = grouped.4 + grouped.5
-                        let presort = grouped.0 + grouped.1 + grouped.2 + grouped.3 + part
-                        
-                        result = presort.sorted { $0.name.levenshteinDistanceScore(to: search) > $1.name.levenshteinDistanceScore(to: search) }
-                    case .global:
-                        result = try await ShelfPlayerKit.globalSearch(query: search, includeOnlineSearchResults: true)
+                case .library:
+                    guard let library = await self.library else {
+                        throw APIClientError.notFound
+                    }
+                    
+                    let grouped = try await ABSClient[library.id.connectionID].items(in: library.id, search: search)
+                    let part = grouped.4 + grouped.5
+                    let presort = grouped.0 + grouped.1 + grouped.2 + grouped.3 + part
+                    
+                    result = presort.sorted { $0.name.levenshteinDistanceScore(to: search) > $1.name.levenshteinDistanceScore(to: search) }
+                case .global:
+                    result = try await ShelfPlayerKit.globalSearch(query: search, includeOnlineSearchResults: true)
                 }
             } catch {
                 self.logger.error("Failed to search: \(error)")
@@ -209,7 +206,7 @@ final class SearchViewModel {
             }
         }
     }
-    .modifier(SearchPanelModifier())
+    //    .modifier(SearchPanelModifier())
     .previewEnvironment()
 }
 #endif
