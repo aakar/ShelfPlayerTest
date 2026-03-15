@@ -12,10 +12,11 @@ import ShelfPlayback
 struct PlaybackTitle: View {
     @Environment(PlaybackViewModel.self) private var viewModel
     @Environment(Satellite.self) private var satellite
-    
+
     let showTertiarySupplements: Bool
-    
+
     @State private var uuid = UUID()
+    @State private var snipViewModel = SnipViewModel()
     
     var body: some View {
         HStack(spacing: 0) {
@@ -57,6 +58,25 @@ struct PlaybackTitle: View {
             if satellite.nowPlayingItemID?.type == .audiobook {
                 Spacer(minLength: 12)
                 
+                if snipViewModel.isCreatingSnip {
+                    ProgressView()
+                } else {
+                    Label("snip.create", systemImage: "scissors")
+                        .labelStyle(.iconOnly)
+                        .padding(4)
+                        .contentShape(.rect)
+                        .onTapGesture {
+                            guard let itemID = satellite.nowPlayingItemID else {
+                                return
+                            }
+
+                            snipViewModel.createSnip(
+                                libraryItemId: itemID.primaryID,
+                                chapterId: satellite.chapter?.id,
+                                anchorSeconds: satellite.currentTime)
+                        }
+                }
+
                 if viewModel.isCreatingBookmark {
                     ProgressView()
                 } else {
@@ -404,7 +424,10 @@ struct PlaybackRateButton: View {
             .padding(12)
             .contentTransition(.numericText())
             .contentShape(.rect(cornerRadius: 4))
-            .animation(.smooth, value: satellite.playbackRate)
+            .modify(if: viewModel.expansionAnimationCount == 0) {
+                $0
+                    .animation(.smooth, value: satellite.playbackRate)
+            }
         } primaryAction: {
             viewModel.cyclePlaybackSpeed()
         }
@@ -525,7 +548,10 @@ struct PlaybackSleepTimerButton: View {
                                 Text(remainingSleepTime, format: .duration(unitsStyle: .abbreviated, allowedUnits: [.minute, .second], maximumUnitCount: 1))
                                     .fontDesign(.rounded)
                                     .contentTransition(.numericText())
-                                    .animation(.smooth, value: remainingSleepTime)
+                                    .modify(if: viewModel.expansionAnimationCount == 0) {
+                                        $0
+                                            .animation(.smooth, value: remainingSleepTime)
+                                    }
                             } else {
                                 ProgressView()
                                     .scaleEffect(0.5)
