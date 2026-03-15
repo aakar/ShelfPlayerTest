@@ -37,7 +37,10 @@ final class AudiobookViewModel: Sendable {
     private(set) var loadingPDF: Bool
     
     private(set) var bookmarks: [Bookmark]
-    
+
+    var snipsVisible: Bool
+    let snipViewModel: SnipViewModel
+
     let sessionLoader: SessionLoader
     
     private(set) var notifyError: Bool
@@ -65,7 +68,10 @@ final class AudiobookViewModel: Sendable {
         loadingPDF = false
         
         bookmarks = []
-        
+
+        snipsVisible = false
+        snipViewModel = SnipViewModel()
+
         sessionLoader = .init(filter: .itemID(audiobook.id))
         
         notifyError = false
@@ -94,7 +100,8 @@ extension AudiobookViewModel {
                 $0.addTask { await self.loadNarrators() }
                 
                 $0.addTask { await self.loadBookmarks() }
-                
+                $0.addTask { self.snipViewModel.loadSnips(libraryItemId: self.audiobook.id.primaryID) }
+
                 if refresh {
                     $0.addTask { await self.sessionLoader.refresh() }
                 }

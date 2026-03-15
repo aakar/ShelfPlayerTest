@@ -216,6 +216,10 @@
 		3AFF94882AF65CF500127AFF /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 3AFF94872AF65CF500127AFF /* Localizable.xcstrings */; };
 		3AFFE7712E79333B003E6B94 /* CompactLegacyCollapsedForeground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AFFE7702E79333B003E6B94 /* CompactLegacyCollapsedForeground.swift */; };
 		3AFFE79C2E7A8060003E6B94 /* TabValuePreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AFFE79B2E7A803B003E6B94 /* TabValuePreferences.swift */; };
+		AA00000100000003AABB0003 /* SnipViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000002AABB0002 /* SnipViewModel.swift */; };
+		AA00000100000005AABB0005 /* SnipRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000004AABB0004 /* SnipRow.swift */; };
+		AA00000100000007AABB0007 /* SnipListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000006AABB0006 /* SnipListView.swift */; };
+		AA00000100000009AABB0009 /* SnipDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000100000008AABB0008 /* SnipDetailView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -543,6 +547,10 @@
 		3AFFE7702E79333B003E6B94 /* CompactLegacyCollapsedForeground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompactLegacyCollapsedForeground.swift; sourceTree = "<group>"; };
 		3AFFE79B2E7A803B003E6B94 /* TabValuePreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabValuePreferences.swift; sourceTree = "<group>"; };
 		FA6717792CEA272A0037CB85 /* sv */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = sv; path = sv.lproj/AppIntentVocabulary.plist; sourceTree = "<group>"; };
+		AA00000100000002AABB0002 /* SnipViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnipViewModel.swift; sourceTree = "<group>"; };
+		AA00000100000004AABB0004 /* SnipRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnipRow.swift; sourceTree = "<group>"; };
+		AA00000100000006AABB0006 /* SnipListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnipListView.swift; sourceTree = "<group>"; };
+		AA00000100000008AABB0008 /* SnipDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnipDetailView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -661,6 +669,7 @@
 				3ABC462F2D5A2F7F00E21956 /* Panels */,
 				3A6924A92D6B9670004E291E /* Collections */,
 				3AA1642B2D6DBA4B00343214 /* Playback */,
+				AA00000100000001AABB0001 /* Snip */,
 				3A2BC1942AD8121400054727 /* Settings.bundle */,
 				3A27A66D2AB7631900F80C92 /* Info.plist */,
 				3A792B962B6F9F53002A48E6 /* InfoPlist.xcstrings */,
@@ -1102,6 +1111,17 @@
 				3A6AAF602DE8D1BC0090C886 /* Multiplatform.xcconfig */,
 			);
 			path = Configuration;
+			sourceTree = "<group>";
+		};
+		AA00000100000001AABB0001 /* Snip */ = {
+			isa = PBXGroup;
+			children = (
+				AA00000100000002AABB0002 /* SnipViewModel.swift */,
+				AA00000100000004AABB0004 /* SnipRow.swift */,
+				AA00000100000006AABB0006 /* SnipListView.swift */,
+				AA00000100000008AABB0008 /* SnipDetailView.swift */,
+			);
+			path = Snip;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -1557,6 +1577,10 @@
 				3A5295242F06871800FA687B /* TabRouterViewModel.swift in Sources */,
 				3A9E98792DC0D0680089B3C9 /* Chapter+Format.swift in Sources */,
 				3A9207052B6D018100A5CAB0 /* AudiobookViewModel.swift in Sources */,
+				AA00000100000003AABB0003 /* SnipViewModel.swift in Sources */,
+				AA00000100000005AABB0005 /* SnipRow.swift in Sources */,
+				AA00000100000007AABB0007 /* SnipListView.swift in Sources */,
+				AA00000100000009AABB0009 /* SnipDetailView.swift in Sources */,
 				3A14C14C2E276AE700D7A2D7 /* CollectionViewModel.swift in Sources */,
 				3A93AE422C7CB19B00D2AE43 /* Color+IsLight.swift in Sources */,
 				3A17EB562E37581500AD6A18 /* CertificateEditor.swift in Sources */,
