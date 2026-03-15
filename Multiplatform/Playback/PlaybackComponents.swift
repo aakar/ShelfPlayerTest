@@ -16,7 +16,8 @@ struct PlaybackTitle: View {
     let showTertiarySupplements: Bool
     
     @State private var uuid = UUID()
-    
+    @State private var snipViewModel = SnipViewModel()
+
     var body: some View {
         HStack(spacing: 0) {
             Menu {
@@ -56,7 +57,26 @@ struct PlaybackTitle: View {
             
             if satellite.nowPlayingItemID?.type == .audiobook {
                 Spacer(minLength: 12)
-                
+
+                if snipViewModel.isCreatingSnip {
+                    ProgressView()
+                } else {
+                    Label("snip.create", systemImage: "scissors")
+                        .labelStyle(.iconOnly)
+                        .padding(4)
+                        .contentShape(.rect)
+                        .onTapGesture {
+                            guard let itemID = satellite.nowPlayingItemID else {
+                                return
+                            }
+
+                            snipViewModel.createSnip(
+                                libraryItemId: itemID.primaryID,
+                                chapterId: satellite.chapter.map { String($0.id) },
+                                anchorSeconds: satellite.currentTime)
+                        }
+                }
+
                 if viewModel.isCreatingBookmark {
                     ProgressView()
                 } else {

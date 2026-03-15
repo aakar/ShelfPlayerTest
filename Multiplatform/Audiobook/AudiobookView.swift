@@ -49,6 +49,20 @@ struct AudiobookView: View {
                     .padding(.bottom, 16)
                 }
                 
+                if !viewModel.snipViewModel.snips.isEmpty {
+                    DisclosureGroup("item.snips \(viewModel.snipViewModel.snips.count)", isExpanded: $viewModel.snipsVisible) {
+                        List {
+                            SnipListView(itemID: viewModel.audiobook.id, snips: viewModel.snipViewModel.snips) { snip in
+                                viewModel.snipViewModel.deleteSnip(snip)
+                            }
+                        }
+                        .listStyle(.plain)
+                        .frame(height: minimumHeight * CGFloat(viewModel.snipViewModel.snips.count))
+                    }
+                    .disclosureGroupStyle(BetterDisclosureGroupStyle())
+                    .padding(.bottom, 16)
+                }
+
                 if viewModel.chapters.count > 1 {
                     DisclosureGroup("item.chapters \(viewModel.chapters.count)", isExpanded: $viewModel.chaptersVisible) {
                         List {
